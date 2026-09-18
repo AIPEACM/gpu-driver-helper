@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+          components: rustfmt, clippy
+      - run: cargo fmt --check
+      - run: cargo test --locked
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo build --release --target x86_64-unknown-linux-musl --locked
+      - name: Verify tag version
+        run: |
+          version="$(awk -F '"' '/^version/{print $2; exit}' Cargo.toml)"
+          test "v${version}" = "${GITHUB_REF_NAME}"
+      - name: Publish binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp target/x86_64-unknown-linux-musl/release/gpu-driver-helper gpu-driver-helper-linux-x86_64
+          gh release create "$GITHUB_REF_NAME" gpu-driver-helper-linux-x86_64 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "gpu-driver-helper $GITHUB_REF_NAME" \
+            --generate-notes
